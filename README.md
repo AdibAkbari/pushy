@@ -7,6 +7,7 @@ Pushy is a lightweight version control system implemented entirely in Bash. It r
 - **Initialization**: Set up a new repository (`pushy-init`).
 - **Staging and Committing**: Track files and save changes with descriptive messages (`pushy-add`, `pushy-commit`).
 - **Branching**: Create and switch between branches (`pushy-branch`, `pushy-checkout`).
+- **Merging**: Merge branches with merge conflict detection (`pushy-merge`)
 - **File History**: View specific versions of a file (`pushy-show`).
 - **Conflict Management**: Prevent loss of uncommitted changes during branch operations.
 - **File Removal**: Support for tracking deleted files (`pushy-rm`).
