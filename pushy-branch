@@ -1,0 +1,72 @@
+#!/bin/dash
+# COMP2041 Assignment 1 - pushy version control
+# pushy-branch
+#
+# This program was written by Adib Akbari (z5488768)
+# on March 24, 2024
+#
+# This script manages branches in pushy, allowing branch creation, deletion,
+# and listing
+
+# Argument check for correct usage
+if [ $# -gt 2 ]; then
+    echo "usage: pushy-branch [-d] <branch>"
+    exit 1
+fi
+
+if [ $# -eq 2 ] && [ "$1" != "-d" ]; then
+    echo "usage: pushy-branch [-d] <branch>"
+    exit 1
+fi
+
+if [ $# -eq 1 ] && [ "$1" = "-d" ]; then
+    echo "usage: pushy-branch [-d] <branch>"
+    exit 1
+fi
+
+# Ensure .pushy exists
+if [ ! -d ".pushy" ]; then
+    echo "pushy-branch: error: pushy repository directory .pushy not found" >&2
+    exit 1
+fi
+
+# Ensure there is at least one commit before proceeding
+if [ ! "$(ls -A .pushy/commits)" ]; then
+    echo "pushy-branch: error: this command can not be run until after the first commit" >&2
+    exit 1
+fi
+
+if [ "$1" = "-d" ]; then
+    # Delete branch
+    if [ "$2" = "master" ]; then
+        echo "pushy-branch: error: can not delete branch 'master': default branch" >&2
+        exit 1
+    elif [ ! -f ".pushy/branches/$2" ]; then
+        echo "pushy-branch: error: branch '$2' doesn't exist" >&2
+        exit 1
+    else
+        # Check for unmerged changes
+        branch_commit=$(cat ".pushy/branches/$2")
+        master_commit=$(cat ".pushy/branches/master")
+        if [ "$branch_commit" != "$master_commit" ]; then
+            echo "pushy-branch: error: branch '$2' has unmerged changes" >&2
+            exit 1
+        fi
+        rm ".pushy/branches/$2"
+        echo "Deleted branch '$2'"
+    fi
+elif [ -n "$1" ]; then
+    # Create branch
+    if [ -f ".pushy/branches/$1" ]; then
+        echo "pushy-branch: error: branch '$1' already exists" >&2
+        exit 1
+    else
+        current_branch=$(cat .pushy/HEAD)
+        cp ".pushy/branches/$current_branch" ".pushy/branches/$1"
+    fi
+else
+    # List branches
+    for branch in .pushy/branches/*; do
+        basename "$branch"
+    done
+fi

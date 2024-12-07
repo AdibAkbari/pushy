@@ -1,0 +1,46 @@
+#!/bin/dash
+# COMP2041 Assignment 1 - pushy version control
+# pushy-show
+#
+# This program was written by Adib Akbari (z5488768)
+# on March 21, 2024
+#
+# Displays the content of a file from a specific commit or the index in the 
+# pushy repository.
+
+if [ ! -d ".pushy" ]; then
+    echo "pushy-show: error: pushy repository directory .pushy not found" >&2
+    exit 1
+fi
+
+# Validate the input format
+if [ $# -eq 0 ] || [ $# -gt 1 ] || ! echo "$1" | grep -q ':'; then
+    echo "usage: pushy-show <commit>:<filename>"
+    exit 1
+fi
+
+commit_num=$(echo "$1" | cut -d ':' -f1)
+filename=$(echo "$1" | cut -d ':' -f2)
+
+# Determine file path based on commit number
+if [ -z "$commit_num" ]; then
+    file_path=".pushy/index/$filename"
+    if [ ! -f "$file_path" ]; then
+        echo "pushy-show: error: '$filename' not found in index"
+        exit 1
+    fi
+else
+    if [ ! -d ".pushy/commits/$commit_num" ]; then
+        echo "pushy-show: error: unknown commit '$commit_num'"
+        exit 1
+    fi
+
+    file_path=".pushy/commits/$commit_num/$filename"
+    if [ ! -f "$file_path" ]; then
+        echo "pushy-show: error: '$filename' not found in commit $commit_num"
+        exit 1
+    fi
+fi
+
+# Display the content of the file
+cat "$file_path"

@@ -1,0 +1,101 @@
+#!/bin/dash
+# COMP2041 Assignment 1 - pushy version control
+# pushy-rm
+#
+# This program was written by Adib Akbari (z5488768)
+# on March 23, 2024
+#
+# Handles file removal in pushy repository.
+
+force=false
+cached=false
+filenames=""
+parsing_filenames=false
+parsed_filenames=false
+
+# Check for .pushy directory
+if [ ! -d ".pushy" ]; then
+    echo "pushy-rm: error: pushy repository directory .pushy not found" >&2
+    exit 1
+fi
+
+# Parse args
+for arg in "$@"; do
+    case "$arg" in
+        --force)
+            [ "$parsing_filenames" = true ] && parsed_filenames=true
+            force=true ;;
+        --cached)
+            [ "$parsing_filenames" = true ] && parsed_filenames=true
+            cached=true ;;
+        -*)
+            echo "usage: pushy-rm [--force] [--cached] <filenames>"
+            exit 1 ;;
+        *)
+            [ "$parsed_filenames" = true ] && {
+                echo "usage: pushy-rm [--force] [--cached] <filenames>"
+                exit 1
+            }
+            parsing_filenames=true
+            filenames="$filenames $arg" ;;
+    esac
+done
+
+# Process filenames
+set -- $filenames
+[ -z "$1" ] && echo "usage: pushy-rm [--force] [--cached] <filenames>" && exit 1
+
+for file in "$@"; do
+    index_file=".pushy/index/$file"
+    current_branch=$(cat .pushy/HEAD)
+    latest_commit=$(head -n 1 ".pushy/branches/$current_branch")
+    repo_file=".pushy/commits/$latest_commit/$file"
+
+    if [ ! -f "$index_file" ]; then
+        error_message="pushy-rm: error: '$file' is not in the pushy repository"
+        break
+    fi
+
+    # Check if repo file exists and differs from index file
+    repo_file_differs_cond="[ -f \"$repo_file\" ] && ! cmp -s \"$index_file\" \"$repo_file\""
+    # Check if working directory file exists and differs from index file
+    file_differs_cond="[ -f \"$file\" ] && ! cmp -s \"$index_file\" \"$file\""
+
+    # Check file differences
+    if [ "$force" = "false" ] && ( eval $repo_file_differs_cond || [ ! -f "$repo_file" ]) && \
+       ( eval $file_differs_cond || [ ! -f "$file" ]); then
+        error_message="pushy-rm: error: '$file' in index is different to both the working file and the repository"
+        break
+    fi
+
+    # Check staged changes
+    if [ "$force" = "false" ] && ( eval $repo_file_differs_cond || [ ! -f "$repo_file" ] ); then
+        if [ "$cached" = "false" ] || \
+           ([ "$cached" = "true" ] && ( eval $file_differs_cond || [ ! -f "$file" ])); then
+            error_message="pushy-rm: error: '$file' has staged changes in the index"
+            break
+        fi
+    fi
+
+    # Check repo and working file difference
+    if [ "$cached" = "false" ] && [ -f "$file" ] && [ -f "$repo_file" ] && \
+       ! cmp -s "$file" "$repo_file"; then
+        [ "$force" = "false" ] && {
+            error_message="pushy-rm: error: '$file' in the repository is different to the working file"
+            break
+        }
+    fi
+done
+
+if [ -n "$error_message" ]; then
+    echo "$error_message" >&2
+    exit 1
+fi
+
+# Remove files
+for file in "$@"; do
+    index_file=".pushy/index/$file"
+    rm -f "$index_file"
+    [ "$cached" = "false" ] && rm -f "$file"
+    echo "true" > ".pushy/index/.uncommitted_changes"
+done

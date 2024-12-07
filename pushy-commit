@@ -1,0 +1,73 @@
+#!/bin/dash
+# COMP2041 Assignment 1 - pushy version control
+# pushy-commit
+#
+# This program was written by Adib Akbari (z5488768)
+# on March 22, 2024
+#
+# This script handles the commit process in the pushy version control system.
+
+if [ ! -d ".pushy" ]; then
+    echo "pushy-commit: error: pushy repository directory .pushy not found" >&2
+    exit 1
+fi
+
+a_flag=false
+commit_message=""
+
+# Parse command-line arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -a)
+            a_flag=true
+            shift ;;
+        -m)
+            shift
+            commit_message="$1"
+            shift ;;
+        *)
+            echo "usage: pushy-commit [-a] -m commit-message" >&2
+            exit 1 ;;
+    esac
+done
+
+if [ -z "$commit_message" ]; then
+    echo "usage: pushy-commit [-a] -m commit-message" >&2
+    exit 1
+fi
+
+if [ "$a_flag" = true ]; then
+    for file in *; do
+        if [ "$file" != ".pushy" ] && [ ! -f ".pushy/index/$file" ] || \
+           ! cmp -s "$file" ".pushy/index/$file"; then
+            cp "$file" .pushy/index/
+            echo "true" > ".pushy/index/.uncommitted_changes"
+        fi
+    done
+fi
+
+# Check for uncommitted changes in index
+if [ -f ".pushy/index/.uncommitted_changes" ] && \
+   [ "$(cat .pushy/index/.uncommitted_changes)" = "true" ]; then
+    commit_id=$(ls .pushy/commits | wc -l | tr -d ' ')
+    commit_dir=".pushy/commits/$commit_id"
+    mkdir "$commit_dir"
+
+    # Save the commit message
+    echo "$commit_message" > "$commit_dir/message"
+
+    # Copy current state of index to new commit directory, excluding uncommitted changes marker
+    if find .pushy/index -mindepth 1 -maxdepth 1 ! -name '.uncommitted_changes' | read _; then
+        cp -r .pushy/index/* "$commit_dir/"
+    fi
+
+    current_branch=$(cat .pushy/HEAD)
+    { echo "$commit_id"; cat ".pushy/branches/$current_branch"; } > ".pushy/branches/$current_branch.tmp"
+    mv ".pushy/branches/$current_branch.tmp" ".pushy/branches/$current_branch"
+
+    # Mark current index as committed
+    echo "false" > ".pushy/index/.uncommitted_changes"
+    echo "Committed as commit $commit_id"
+else
+    echo "nothing to commit"
+fi

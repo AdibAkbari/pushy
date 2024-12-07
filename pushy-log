@@ -1,0 +1,25 @@
+#!/bin/dash
+# COMP2041 Assignment 1 - pushy version control
+# pushy-log
+#
+# This program was written by Adib Akbari (z5488768)
+# on March 21, 2024
+#
+# This script displays the log of commits for the current branch in the pushy 
+# repository.
+
+if [ ! -d ".pushy" ]; then
+    echo "pushy-log: error: pushy repository directory .pushy not found" >&2
+    exit 1
+fi
+
+current_branch=$(cat .pushy/HEAD)
+branch_file=".pushy/branches/$current_branch"
+
+# Iterate through each commit ID in the branch file and display its message
+for commit_id in $(cat "$branch_file"); do
+    if [ -d ".pushy/commits/$commit_id" ]; then
+        message=$(cat ".pushy/commits/$commit_id/message")
+        echo "$commit_id $message"
+    fi
+done

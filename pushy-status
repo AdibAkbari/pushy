@@ -1,0 +1,107 @@
+#!/bin/dash
+# COMP2041 Assignment 1 - pushy version control
+# pushy-status
+#
+# This program was written by Adib Akbari (z5488768)
+# on March 23, 2024
+#
+# Displays the status of files within the pushy repository.
+
+if [ ! -d ".pushy" ]; then
+    echo "pushy-status: error: pushy repository directory .pushy not found" >&2
+    exit 1
+fi
+
+current_branch=$(cat .pushy/HEAD)
+latest_commit=$(head -n 1 ".pushy/branches/$current_branch")
+if [ -z "$latest_commit" ]; then
+    exit 0
+fi
+
+# Helper function to check if a file exists and is not a directory
+file_exists() {
+    [ -f "$1" ]
+}
+
+
+if [ -n "$latest_commit" ] && \
+	find .pushy/commits/"$latest_commit" -mindepth 1 -maxdepth 1 ! -name 'message' | read _; then
+	# Process files in the latest commit
+	for repo_file in .pushy/commits/"$latest_commit"/*; do
+		file_name=$(basename "$repo_file")
+		
+		# Skip the commit message file
+		if [ "$file_name" = "message" ]; then
+			continue
+		fi
+
+		dir_file="./$file_name"
+		index_file=".pushy/index/$file_name"
+
+		if file_exists "$dir_file" && file_exists "$index_file"; then
+			if cmp -s "$repo_file" "$index_file" && cmp -s "$repo_file" "$dir_file"; then
+				echo "$file_name - same as repo"
+			elif ! cmp -s "$repo_file" "$index_file" && ! cmp -s "$index_file" "$dir_file"; then
+				echo "$file_name - file changed, different changes staged for commit"
+			elif cmp -s "$repo_file" "$index_file" && ! cmp -s "$repo_file" "$dir_file"; then
+				echo "$file_name - file changed, changes not staged for commit"
+			else
+				echo "$file_name - file changed, changes staged for commit"
+			fi
+		elif file_exists "$dir_file" && ! file_exists "$index_file"; then
+			echo "$file_name - deleted from index"
+		elif ! file_exists "$dir_file" && file_exists "$index_file"; then
+			if cmp -s "$repo_file" "$index_file"; then
+				echo "$file_name - file deleted"
+			else
+				echo "$file_name - file deleted, changes staged for commit"
+			fi
+		elif ! file_exists "$dir_file" && ! file_exists "$index_file"; then
+			echo "$file_name - file deleted, deleted from index"
+		fi
+	done
+fi
+
+if find .pushy/index -mindepth 1 -maxdepth 1 ! -name '.uncommitted_changes' | read _; then
+	# Process files in the index
+	for index_file in .pushy/index/*; do
+		file_name=$(basename "$index_file")
+		
+		# Skip the .uncommitted_changes file
+		if [ "$file_name" = ".uncommitted_changes" ]; then
+			continue
+		fi
+
+		repo_file=".pushy/commits/$latest_commit/$file_name"
+		dir_file="./$file_name"
+
+		if ! file_exists "$repo_file"; then
+			if file_exists "$dir_file"; then
+				if cmp -s "$index_file" "$dir_file"; then
+					echo "$file_name - added to index"
+				else
+					echo "$file_name - added to index, file changed"
+				fi
+			else
+				echo "$file_name - added to index, file deleted"
+			fi
+		fi
+	done
+fi
+
+if find . -maxdepth 1 -type f ! -path './.pushy*' | read _; then
+	# Process files in the directory
+	for dir_file in *; do
+		# Skip the .pushy directory
+		if [ "$dir_file" = ".pushy" ]; then
+			continue
+		fi
+
+		repo_file=".pushy/commits/$latest_commit/$dir_file"
+		index_file=".pushy/index/$dir_file"
+
+		if ! file_exists "$repo_file" && ! file_exists "$index_file"; then
+			echo "$dir_file - untracked"
+		fi
+	done
+fi

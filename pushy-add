@@ -1,0 +1,38 @@
+#!/bin/dash
+# COMP2041 Assignment 1 - pushy version control
+# pushy-add
+#
+# This program was written by Adib Akbari (z5488768)
+# on March 25, 2024
+#
+# This script adds files to the pushy index, handling deletions and updates.
+
+delete_file=false
+if [ ! -d ".pushy" ]; then
+    echo "pushy-add: error: pushy repository directory .pushy not found" >&2
+    exit 1
+fi
+
+for file in "$@"; do
+    index_file=".pushy/index/$file"
+    if [ ! -f "$file" ]; then
+        if [ ! -f "$index_file" ]; then
+            echo "pushy-add: error: can not open '$file'" >&2
+            exit 1
+        else
+            delete_file=true
+        fi
+    fi
+
+    if [ -f "$index_file" ] && cmp -s "$file" "$index_file"; then
+        continue  # File in index is identical, no update needed
+    fi
+
+    if [ "$delete_file" = "true" ]; then
+        rm "$index_file"
+    else
+        cp "$file" .pushy/index/
+    fi
+    
+    echo "true" > ".pushy/index/.uncommitted_changes"
+done

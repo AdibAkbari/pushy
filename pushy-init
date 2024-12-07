@@ -1,0 +1,14 @@
+#!/bin/dash
+
+if [ -d ".pushy" ]; then
+	echo "pushy-init: error: .pushy already exists" >&2 
+	exit 1
+fi
+
+mkdir ".pushy"
+mkdir .pushy/commits
+mkdir .pushy/index
+mkdir .pushy/branches
+touch .pushy/branches/master
+echo "master" > .pushy/HEAD
+echo "Initialized empty pushy repository in .pushy"

@@ -1,0 +1,241 @@
+#!/bin/dash
+# COMP2041 Assignment 1 - pushy version control
+# pushy-merge
+#
+# This program was written by Adib Akbari (z5488768)
+# on March 24, 2024
+#
+# Merges changes from the specified branch or commit into the current branch.
+# Returns error specifying merge conflicts, if present.
+
+
+# Ensure .pushy exists and validate input
+if [ ! -d ".pushy" ]; then
+    echo "pushy-merge: error: pushy repository directory .pushy not found" >&2
+    exit 1
+fi
+
+if [ "$2" != "-m" ] || [ -z "$3" ]; then
+    echo "pushy-merge: error: empty commit message"
+    exit 1
+fi
+merge_target=""
+merge_message=""
+m_flag=false
+target_set=false
+
+# Parsing command-line arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -m)
+            m_flag=true
+            shift
+            if [ -n "$1" ]; then
+                merge_message="$1"
+                shift
+            else
+                echo "pushy-merge: error: empty commit message"
+                exit 1
+            fi
+            ;;
+        *)
+            if [ "$target_set" = true ]; then
+                # If we've already set the target, this is an invalid usage
+                echo "usage: pushy-merge <branch|commit> -m message"
+                exit 1
+            else
+                merge_target="$1"
+                target_set=true
+                shift
+            fi
+            ;;
+    esac
+done
+
+# Check if both -m message and branch/commit have been provided
+if [ "$m_flag" = false ] || [ -z "$merge_target" ]; then
+    echo "usage: pushy-merge <branch|commit> -m message"
+    exit 1
+fi
+
+target_branch=$(cat .pushy/HEAD)
+source_branch=""
+
+# Determine if merge_target is a branch or commit number
+if [ -f ".pushy/branches/$merge_target" ]; then
+	source_branch=$merge_target
+    source_commit=$(head -n 1 ".pushy/branches/$source_branch")
+	if grep -q "^$source_commit\$" ".pushy/branches/$target_branch"; then
+		echo "Already up to date"
+		exit 0
+	fi
+elif [ -d ".pushy/commits/$merge_target" ]; then
+    source_commit="$merge_target"
+	if grep -q "^$source_commit\$" ".pushy/branches/$target_branch"; then
+		echo "Already up to date"
+		exit 0
+	fi
+    # Find branch of commit
+    for branch_file in .pushy/branches/*; do
+        branch_name=$(basename "$branch_file")
+        if grep -q "^$source_commit\$" "$branch_file"; then
+            source_branch="$branch_name"
+            break
+        fi
+    done
+
+	if [ -z "$source_branch" ]; then
+    	echo "pushy-merge: error: unknown commit '$source_commit'"
+    exit 1
+	fi
+else
+    echo "pushy-merge: error: unknown branch '$merge_target'"
+    exit 1
+fi
+
+
+# Fast-forward check
+current_commit=$(head -n 1 ".pushy/branches/$target_branch")
+if grep -q "^$current_commit\$" ".pushy/branches/$source_branch"; then
+    # Fast-forward merge
+    cat ".pushy/branches/$source_branch" > ".pushy/branches/$target_branch"
+	current_commit=$(head -n 1 ".pushy/branches/$target_branch")
+	for file in .pushy/commits/"$current_commit"/*; do
+		filename=$(basename "$file")
+		# Skip the commit message file
+		if [ "$filename" = "message" ]; then
+			continue
+		fi
+		cp "$file" .  # Copy to working directory
+		cp "$file" ".pushy/index/"  # Copy to index
+	done
+
+    echo "Fast-forward: no commit created"
+    exit 0
+fi
+
+
+# Identify the base commit
+base_commit=""
+for commit_source in $(cat ".pushy/branches/$target_branch"); do
+    for commit_target in $(cat ".pushy/branches/$source_branch"); do
+        if [ "$commit_source" = "$commit_target" ]; then
+            base_commit="$commit_source"
+            break 2
+        fi
+    done
+done
+
+if [ -z "$base_commit" ]; then
+    echo "help - shouldn't have reached here since its a starting from one root"
+    exit 1
+fi
+
+conflicts=""
+
+# Check for merge conflicts based on the base commit
+for file in .pushy/commits/"$base_commit"/*; do
+    file_name=$(basename "$file")
+	if [ "$file_name" = "message" ]; then
+		continue
+	fi
+    source_file_commit=".pushy/commits/$current_commit/$file_name"
+    target_file_commit=".pushy/commits/$source_commit/$file_name"
+
+    # Check if the file has been changed in both branches from the base commit
+    if [ -f "$source_file_commit" ] && [ -f "$target_file_commit" ] && \
+       ! cmp -s "$file" "$source_file_commit" && \
+       ! cmp -s "$file" "$target_file_commit" && \
+       ! cmp -s "$source_file_commit" "$target_file_commit"; then
+        conflicts="${conflicts}${file_name}\n"
+    fi
+done
+
+# Check if there were any conflicts
+if [ -n "$conflicts" ]; then
+    echo "pushy-merge: error: These files can not be merged:"
+    echo "$conflicts" | head -n -1
+    exit 1
+fi
+
+
+files_in_source_commit=$(ls .pushy/commits/"$source_commit")
+
+# Add or update files from the merge commit to the index
+for file in $files_in_source_commit; do
+	file_name=$(basename "$file")
+	file_in_base=".pushy/commits/$base_commit/$file"
+    file_in_current=".pushy/commits/$current_commit/$file"
+
+    # Skip the commit message file
+    if [ "$file" = "message" ]; then
+        continue
+    fi
+
+	# if the file also exists in current commit and is different to file in 
+	# base commit, use it, since source branch file must be same as base commit
+	if [ -f "$file_in_current" ] && ([ ! -f "$file_in_base" ] || \
+		! cmp -s "$file_in_base" "$file_in_current"); then
+		cp "$file_in_current" ".pushy/index/$file"
+        cp "$file_in_current" "."
+		continue
+	fi
+
+    # Copy file from merge commit to index and working directory
+    cp ".pushy/commits/$source_commit/$file" ".pushy/index/$file"
+    cp ".pushy/commits/$source_commit/$file" "."
+done
+
+# Iterate through files in the base commit directory
+for file in .pushy/commits/"$base_commit"/*; do
+    # Extract the filename from the path
+    file_name=$(basename "$file")
+    
+    # Skip the commit message file
+    if [ "$file_name" = "message" ]; then
+        continue
+    fi
+
+    # If file not in merge commit but is in base commit - delete from index
+    if [ ! -f ".pushy/commits/$source_commit/$file_name" ]; then
+        if [ -f ".pushy/index/$file_name" ]; then
+            rm -f ".pushy/index/$file_name"
+        fi
+    fi
+done
+
+commit_id=$(ls .pushy/commits | wc -l | tr -d ' ')
+commit_dir=".pushy/commits/$commit_id"
+mkdir "$commit_dir"
+
+# Save the commit message
+echo "$merge_message" > "$commit_dir/message"
+
+# Copy current state of index to new commit directory
+if find .pushy/index -mindepth 1 -maxdepth 1 ! -name '.uncommitted_changes' | read _; then
+	cp -r .pushy/index/* "$commit_dir/"
+fi
+
+# Temporary file to accumulate the new order of commit IDs
+temp_file=".pushy/branches/$target_branch.tmp"
+: > "$temp_file"
+i=$commit_id
+
+while [ "$i" -ge 0 ]; do
+    # add new commit_id for merge commit
+    if [ "$i" -eq "$commit_id" ]; then
+        echo "$i" >> "$temp_file"
+    fi
+
+    # Only add i if in either branch file
+    if grep -q "^$i\$" ".pushy/branches/$source_branch" || \
+	   grep -q "^$i\$" ".pushy/branches/$target_branch"; then
+        echo "$i" >> "$temp_file"
+    fi
+    i=$((i - 1))
+done
+
+mv "$temp_file" ".pushy/branches/$target_branch"
+
+echo "false" > ".pushy/index/.uncommitted_changes"
+echo "Committed as commit $commit_id"

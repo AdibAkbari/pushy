@@ -1,0 +1,89 @@
+#!/bin/dash
+# COMP2041 Assignment 1 - pushy version control
+# pushy-checkout
+#
+# This program was written by Adib Akbari (z5488768)
+# on March 24, 2024
+#
+# Manages branch checkout, including changing current branch and updating files.
+
+# Check for .pushy directory
+if [ ! -d ".pushy" ]; then
+    echo "pushy-checkout: error: pushy repository directory .pushy not found" >&2
+    exit 1
+fi
+
+# Ensure branch name is provided
+[ -z "$1" ] && echo "usage: pushy-checkout <branch-name>" >&2 && exit 1
+
+new_branch=$1
+current_branch=$(cat .pushy/HEAD)
+
+# Verify new branch exists
+if [ ! -f ".pushy/branches/$new_branch" ]; then
+    echo "pushy-checkout: error: unknown branch '$new_branch'" >&2
+    exit 1
+fi
+
+# Check if already on new branch
+[ "$new_branch" = "$current_branch" ] && echo "Already on '$new_branch'" && exit 0
+
+current_commit=$(head -n 1 ".pushy/branches/$current_branch")
+new_commit=$(head -n 1 ".pushy/branches/$new_branch")
+
+# If branches point to same commit, just update HEAD
+if [ "$current_commit" = "$new_commit" ]; then
+    echo "$new_branch" > .pushy/HEAD
+    echo "Switched to branch '$new_branch'"
+    exit 0
+fi
+
+# List files at risk of being overwritten
+overwrite_warning=""
+
+for file in $(find . -type f ! -path "./.pushy/*"); do
+    filename=$(basename "$file")
+    index_file=".pushy/index/$filename"
+    current_file_commit=".pushy/commits/$current_commit/$filename"
+    new_file_commit=".pushy/commits/$new_commit/$filename"
+
+    # Check for overwrite risks
+    if [ -f "$index_file" ] && { [ ! -f "$current_file_commit" ] || \
+       ! cmp -s "$index_file" "$current_file_commit"; }; then
+        overwrite_warning="$overwrite_warning\n$filename"
+    elif [ -f "$current_file_commit" ] && ! cmp -s "$file" "$current_file_commit"; then
+        overwrite_warning="$overwrite_warning\n$filename"
+    fi
+    # Check new branch's commit for overwrite risks
+    if [ ! -f "$current_file_commit" ] && [ ! -f "$index_file" ] && \
+       [ -f "$new_file_commit" ] && [ -f "$file" ] && ! cmp -s "$new_file_commit" "$file"; then
+        overwrite_warning="$overwrite_warning\n$filename"
+    fi
+done
+
+# Warn and exit if overwrite risks detected
+if [ -n "$overwrite_warning" ]; then
+	error_msg1="pushy-checkout: error: Your changes to the following files"
+	error_msg2="would be overwritten by checkout:$overwrite_warning"
+    echo "$error_msg1 $error_msg2"
+    exit 1
+fi
+
+# Clean current commit files from working directory and index
+for file in .pushy/commits/"$current_commit"/*; do
+    filename=$(basename "$file")
+    [ "$filename" = "message" ] && continue  # Skip commit message
+    rm -f "$filename" ".pushy/index/$filename"
+done
+
+# Copy new commit files to working directory and index
+for file in .pushy/commits/"$new_commit"/*; do
+    filename=$(basename "$file")
+    [ "$filename" = "message" ] && continue  # Skip commit message
+    cp "$file" .  # To working directory
+    cp "$file" ".pushy/index/"  # To index
+done
+
+# Update HEAD
+echo "$new_branch" > .pushy/HEAD
+echo "Switched to branch '$new_branch'"
