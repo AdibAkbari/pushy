@@ -1,4 +1,4 @@
-# Pushy - A Minimal Git Clone in Bash
+# Pushy - A Git Clone in Bash
 
 ## Overview
 Pushy is a lightweight version control system implemented entirely in Bash. It replicates core `git` functionalities such as initializing repositories, adding and committing changes, creating and switching branches, and viewing file histories. I made Pushy for an assignment to help explore how version control works under the hood and improve my Bash scripting ability.
